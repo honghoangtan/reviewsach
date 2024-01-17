@@ -2,7 +2,7 @@ import os, requests
 
 from flask import Flask, session, render_template, redirect, request, flash, url_for, jsonify
 from flask_session import Session
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import scoped_session, sessionmaker
 from functools import wraps
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -73,7 +73,7 @@ def register():
             password = request.form.get("password1")
             # try to commit to database, raise error if any
             try:
-                db.execute("INSERT INTO users (firstname, lastname, email, password) VALUES (:firstname, :lastname, :email, :password)",
+                db.execute(text("INSERT INTO users (firstname, lastname, email, password) VALUES (:firstname, :lastname, :email, :password)"),
                                {"firstname": first_name, "lastname": last_name, "email":email, "password": generate_password_hash(password)})
             except Exception as e:
                 return render_template("error.html", message=e)
@@ -99,7 +99,7 @@ def login():
             return render_template("error.html", message="must provide password")
 
         # Query database for email and password
-        Q = db.execute("SELECT * FROM users WHERE email LIKE :email", {"email": form_email}).fetchone()
+        Q = db.execute(text("SELECT * FROM users WHERE email LIKE :email"), {"email": form_email}).fetchone()
 
         # User exists ?
         if Q is None:
@@ -120,7 +120,7 @@ def login():
         return render_template("login.html")
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["GET"])
 @login_required
 def logout():
     # Forget any user_id
@@ -140,7 +140,7 @@ def search():
         if query is None:
             return render_template("error.html", message="Search field can not be empty!")
         try:
-            result = db.execute("SELECT * FROM books WHERE LOWER(isbn) LIKE :query OR LOWER(title) LIKE :query OR LOWER(author) LIKE :query", {"query": "%" + query.lower() + "%"}).fetchall()
+            result = db.execute(text("SELECT * FROM books WHERE LOWER(isbn) LIKE :query OR LOWER(title) LIKE :query OR LOWER(author) LIKE :query"), {"query": "%" + query.lower() + "%"}).fetchall()
         except Exception as e:
             return render_template("error.html", message=e)
         if not result:
@@ -153,7 +153,7 @@ def search():
 def details(bookid):
     if request.method == "GET":
         #Get book details
-        result = db.execute("SELECT * from books WHERE bookid = :bookid", {"bookid": bookid}).fetchone()
+        result = db.execute(text("SELECT * from books WHERE bookid = :bookid"), {"bookid": bookid}).fetchone()
 
         #Get API data from GoodReads
         try:
@@ -162,14 +162,14 @@ def details(bookid):
             return render_template("error.html", message = e)
 
         # Get comments particular to one book
-        comment_list = db.execute("SELECT u.firstname, u.lastname, u.email, r.rating, r.comment from reviews r JOIN users u ON u.userid=r.user_id WHERE book_id = :id", {"id": bookid}).fetchall()
+        comment_list = db.execute(text("SELECT u.firstname, u.lastname, u.email, r.rating, r.comment from reviews r JOIN users u ON u.userid=r.user_id WHERE book_id = :id"), {"id": bookid}).fetchall()
         if not result:
             return render_template("error.html", message="Invalid book id")
 
         return render_template("details.html", result=result, comment_list=comment_list , bookid=bookid, goodreads=goodreads.json()["books"][0])
     else:
         ######## Check if the user commented on this particular book before ###########
-        user_reviewed_before = db.execute("SELECT * from reviews WHERE user_id = :user_id AND book_id = :book_id",  {"user_id": session["user_id"], "book_id": bookid}).fetchone()
+        user_reviewed_before = db.execute(text("SELECT * from reviews WHERE user_id = :user_id AND book_id = :book_id"),  {"user_id": session["user_id"], "book_id": bookid}).fetchone()
         if user_reviewed_before:
             return render_template("error.html", message = "You reviewed this book before!")
         ######## Proceed to get user comment ###########
@@ -181,7 +181,7 @@ def details(bookid):
 
         # try to commit to database, raise error if any
         try:
-            db.execute("INSERT INTO reviews (user_id, book_id, rating, comment) VALUES (:user_id, :book_id, :rating, :comment)",
+            db.execute(text("INSERT INTO reviews (user_id, book_id, rating, comment) VALUES (:user_id, :book_id, :rating, :comment)"),
                            {"user_id": session["user_id"], "book_id": bookid, "rating":user_rating, "comment": user_comment})
         except Exception as e:
             return render_template("error.html", message=e)
@@ -199,7 +199,7 @@ def api(isbn):
 
     # Make sure ISBN exists in the database
     try:
-        book = db.execute("SELECT * from books WHERE isbn = :isbn", {"isbn": isbn}).fetchone()
+        book = db.execute(text("SELECT * from books WHERE isbn = :isbn"), {"isbn": isbn}).fetchone()
     except Exception as e:
         return render_template("error.html", message=e)
     if book is None:
