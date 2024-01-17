@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import scoped_session, sessionmaker
 from functools import wraps
 from werkzeug.security import check_password_hash, generate_password_hash
-
+import logging
 app = Flask(__name__)
 
 # Check for environment variable
@@ -154,10 +154,11 @@ def details(bookid):
     if request.method == "GET":
         #Get book details
         result = db.execute(text("SELECT * from books WHERE bookid = :bookid"), {"bookid": bookid}).fetchone()
-
         #Get API data from GoodReads
         try:
-            goodreads = requests.get("https://www.goodreads.com/book/review_counts.json", params={"key": key, "isbns": result.isbn})
+            goodreads = requests.get("https://www.goodreads.com/book/review_counts.json", params={"isbns": result.isbn})
+            goodreads.raise_for_status()
+            logging.info(f"Goodreads API request for bookid {bookid}: {goodreads.status_code} - {goodreads.content}")
         except Exception as e:
             return render_template("error.html", message = e)
 
@@ -205,7 +206,7 @@ def api(isbn):
     if book is None:
         return jsonify({"error": "Not Found"}), 404
     # Get GoodReads API datad
-    goodreads = requests.get("https://www.goodreads.com/book/review_counts.json", params={"key": key, "isbns": isbn})
+    goodreads = requests.get("https://www.goodreads.com/book/review_counts.json", params={"isbns": isbn})
     goodreads_book = goodreads.json()["books"][0]
     # Return book details in JSON
     return jsonify({
